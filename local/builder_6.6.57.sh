@@ -117,6 +117,58 @@ sudo sed -i 's/^CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION="-'${CUSTOM_SUFFIX}'"
 sed -i 's/${scm_version}//' ./common/scripts/setlocalversion
 echo "CONFIG_LOCALVERSION_AUTO=n" >> ./common/arch/arm64/configs/gki_defconfig
 
+# ===== 应用 Droidspaces 6.6 OKI 补丁 =====
+echo ">>> 应用 Droidspaces 6.6 OKI 补丁..."
+DROIDSPACES_PATCH_LOCAL="$SCRIPT_DIR/../other_patch/droidspaces_oki_6.6.patch"
+DROIDSPACES_PATCH_WORKTREE="$WORKDIR/kernel_workspace/common/droidspaces_oki_6.6.patch"
+if [[ -f "$DROIDSPACES_PATCH_LOCAL" ]]; then
+  cp "$DROIDSPACES_PATCH_LOCAL" "$DROIDSPACES_PATCH_WORKTREE"
+else
+  echo ">>> 本地未找到 Droidspaces 补丁，尝试从远程仓库拉取..."
+  wget https://raw.githubusercontent.com/cctv18/oppo_oplus_realme_sm8750/refs/heads/main/other_patch/droidspaces_oki_6.6.patch -O "$DROIDSPACES_PATCH_WORKTREE"
+fi
+cd "$WORKDIR/kernel_workspace/common"
+if git apply --check droidspaces_oki_6.6.patch; then
+  git apply droidspaces_oki_6.6.patch
+elif git apply --reverse --check droidspaces_oki_6.6.patch; then
+  echo ">>> Droidspaces 补丁已存在，跳过重复应用。"
+else
+  echo ">>> Droidspaces 补丁应用失败。"
+  git apply --check droidspaces_oki_6.6.patch
+  exit 1
+fi
+cd "$WORKDIR/kernel_workspace"
+
+# ===== 应用 NTsync 补丁 =====
+echo ">>> 应用 NTsync 补丁..."
+NTSYNC_BASE_PATCH_LOCAL="$SCRIPT_DIR/../other_patch/ntsync_base.patch"
+NTSYNC_COMPAT_PATCH_LOCAL="$SCRIPT_DIR/../other_patch/ntsync_compat_android15-6.6.patch"
+NTSYNC_BASE_PATCH_WORKTREE="$WORKDIR/kernel_workspace/common/ntsync_base.patch"
+NTSYNC_COMPAT_PATCH_WORKTREE="$WORKDIR/kernel_workspace/common/ntsync_compat_android15-6.6.patch"
+if [[ -f "$NTSYNC_BASE_PATCH_LOCAL" ]]; then
+  cp "$NTSYNC_BASE_PATCH_LOCAL" "$NTSYNC_BASE_PATCH_WORKTREE"
+else
+  wget https://raw.githubusercontent.com/cctv18/oppo_oplus_realme_sm8750/refs/heads/main/other_patch/ntsync_base.patch -O "$NTSYNC_BASE_PATCH_WORKTREE"
+fi
+if [[ -f "$NTSYNC_COMPAT_PATCH_LOCAL" ]]; then
+  cp "$NTSYNC_COMPAT_PATCH_LOCAL" "$NTSYNC_COMPAT_PATCH_WORKTREE"
+else
+  wget https://raw.githubusercontent.com/cctv18/oppo_oplus_realme_sm8750/refs/heads/main/other_patch/ntsync_compat_android15-6.6.patch -O "$NTSYNC_COMPAT_PATCH_WORKTREE"
+fi
+cd "$WORKDIR/kernel_workspace/common"
+for patch_name in ntsync_base.patch ntsync_compat_android15-6.6.patch; do
+  if git apply --whitespace=nowarn --check "$patch_name"; then
+    git apply --whitespace=nowarn "$patch_name"
+  elif git apply --reverse --whitespace=nowarn --check "$patch_name"; then
+    echo ">>> $patch_name 已存在，跳过重复应用。"
+  else
+    echo ">>> $patch_name 应用失败。"
+    git apply --whitespace=nowarn --check "$patch_name"
+    exit 1
+  fi
+done
+cd "$WORKDIR/kernel_workspace"
+
 # ===== 拉取 KSU 并设置版本号 =====
 if [[ "$KSU_BRANCH" == "y" || "$KSU_BRANCH" == "Y" ]]; then
   echo ">>> 拉取 SukiSU-Ultra 并设置版本..."
@@ -252,6 +304,25 @@ fi
 # ===== 添加 defconfig 配置项 =====
 echo ">>> 添加 defconfig 配置项..."
 DEFCONFIG_FILE=./common/arch/arm64/configs/gki_defconfig
+
+# 写入 Droidspaces / LXC 基础配置
+cat >> "$DEFCONFIG_FILE" <<EOF
+CONFIG_SYSCTL=y
+CONFIG_SYSVIPC=y
+CONFIG_POSIX_MQUEUE=y
+CONFIG_NAMESPACES=y
+CONFIG_PID_NS=y
+CONFIG_IPC_NS=y
+CONFIG_UTS_NS=y
+CONFIG_USER_NS=y
+CONFIG_DEVTMPFS=y
+CONFIG_DEVTMPFS_MOUNT=y
+CONFIG_CGROUPS=y
+CONFIG_CGROUP_DEVICE=y
+CONFIG_CGROUP_PIDS=y
+CONFIG_MEMCG=y
+CONFIG_NTSYNC=y
+EOF
 
 # 写入通用 SUSFS/KSU 配置
 echo "CONFIG_KSU=y" >> "$DEFCONFIG_FILE"
